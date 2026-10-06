@@ -1,0 +1,40 @@
+[project]
+name = "prefect-modal-starter"
+version = "0.1.0"
+description = "Starter repo: Prefect Cloud deployments with a process pool, a Modal push pool, and GitHub Actions CI/CD"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "starter-common",
+    "starter-canary",
+    "starter-gpu",
+]
+
+[project.optional-dependencies]
+# Only the GPU image / Modal run needs torch. `uv sync --extra gpu`
+gpu = ["starter-gpu[gpu]"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8",
+    "pyyaml>=6",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+starter-common = { workspace = true }
+starter-canary = { workspace = true }
+starter-gpu = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,25 @@
+[project]
+name = "starter-gpu"
+version = "0.1.0"
+description = "GPU smoke test flow that runs on a Modal push work pool"
+requires-python = ">=3.12"
+dependencies = [
+    "prefect>=3.7,<4",
+    "starter-common",
+]
+
+[project.optional-dependencies]
+# torch is heavy; only the GPU image / Modal run needs it. Tests and the canary do not.
+gpu = [
+    "torch>=2.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/starter_gpu"]
+
+[tool.uv.sources]
+starter-common = { workspace = true }

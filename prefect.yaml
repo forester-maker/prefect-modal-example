@@ -1,0 +1,123 @@
+# prefect.yaml — deployment definitions for this repo.
+#
+# House rules (see AGENTS.md):
+#   * No `build:` or `push:` sections. CI builds and pushes images; the tag arrives
+#     here through the $IMAGE environment variable at `prefect deploy` time.
+#   * One deployment block per (flow, work pool) pair. Keep them boring.
+#   * Anything environment-specific (workspace, API key) lives in the environment,
+#     not in this file. The same file deploys to dev, staging and production.
+
+name: prefect-modal-starter
+prefect-version: ">=3.7"
+
+definitions:
+  tags: &tags ["starter"]
+
+  work_pools:
+    process: &pool_process
+      name: starter-process
+      work_queue_name: default
+
+    modal: &pool_modal
+      name: starter-modal
+      work_queue_name: default
+
+  # Pull steps decide how flow code reaches the run.
+  pull:
+    # (a) Clone this repo at run time. No image, no registry. The worker's or
+    #     Modal container's Python must already have the dependencies.
+    git: &pull_git
+      - prefect.deployments.steps.git_clone:
+          id: clone
+          repository: "{{ $REPO_URL }}"
+          branch: "{{ $REPO_BRANCH }}"
+
+    # (b) Clone and install with uv at run time. Fully self-contained; a Modal
+    #     container starts from a bare Prefect image and ends up with torch.
+    #     Slower per run (torch is large) — fine for a quick start, not for
+    #     a 100-job backlog. Use the image path for that.
+    git_install: &pull_git_install
+      - prefect.deployments.steps.git_clone:
+          id: clone
+          repository: "{{ $REPO_URL }}"
+          branch: "{{ $REPO_BRANCH }}"
+      - prefect.deployments.steps.run_shell_script:
+          directory: "{{ clone.directory }}"
+          script: pip install --quiet --upgrade "uv>=0.5"
+      - prefect.deployments.steps.run_shell_script:
+          directory: "{{ clone.directory }}"
+          script: uv sync --frozen --no-dev --no-editable --extra gpu
+
+    # (c) Code is already baked into the image at /app. Nothing to fetch.
+    image: &pull_image
+      - prefect.deployments.steps.set_working_directory:
+          directory: /app
+
+deployments:
+  # ---------------------------------------------------------------- canary
+  # Deployed by .github/workflows/deploy-canary.yml on every push to main,
+  # then run once by the same workflow. If it does not complete, CI fails.
+  - name: process
+    entrypoint: packages/canary/src/starter_canary/flows.py:canary
+    description: End-to-end check that CI can deploy to this workspace and the process pool can run work.
+    tags: *tags
+    work_pool: *pool_process
+    pull: *pull_git
+
+  - name: modal
+    entrypoint: packages/canary/src/starter_canary/flows.py:canary
+    description: Same canary, but on the Modal push pool. No worker needed.
+    tags: *tags
+    work_pool:
+      <<: *pool_modal
+      job_variables:
+        env:
+          UV_PROJECT_ENVIRONMENT: /usr/local
+    pull: *pull_git_install
+
+  # --------------------------------------------------------- gpu-smoke-test
+  # Quick start: no registry. Modal clones the repo and installs with uv.
+  - name: modal-git
+    entrypoint: packages/gpu_workload/src/starter_gpu/flows.py:gpu_smoke_test
+    description: GPU smoke test on Modal; code and deps installed at run time from git.
+    tags: *tags
+    parameters:
+      size: 4096
+      require_gpu: true
+      output_base: /tmp/outputs
+    work_pool:
+      <<: *pool_modal
+      job_variables:
+        gpu: T4
+        env:
+          UV_PROJECT_ENVIRONMENT: /usr/local
+    pull: *pull_git_install
+
+  # Production path: CI built and pushed the image; $IMAGE carries its tag.
+  - name: modal-image
+    entrypoint: packages/gpu_workload/src/starter_gpu/flows.py:gpu_smoke_test
+    description: GPU smoke test on Modal using the image built by CI (see deploy-release.yml).
+    tags: *tags
+    parameters:
+      size: 4096
+      require_gpu: true
+      output_base: /tmp/outputs
+    work_pool:
+      <<: *pool_modal
+      job_variables:
+        image: "{{ $IMAGE }}"
+        gpu: T4
+    pull: *pull_image
+
+  # Laptop / process-pool variant. CPU only, small matrix. Proves the flow and
+  # the run-scoped output prefix without touching Modal.
+  - name: process-cpu
+    entrypoint: packages/gpu_workload/src/starter_gpu/flows.py:gpu_smoke_test
+    description: CPU-only smoke test on the process pool. Needs torch in the worker env (uv sync --extra gpu).
+    tags: *tags
+    parameters:
+      size: 512
+      require_gpu: false
+      output_base: /tmp/outputs
+    work_pool: *pool_process
+    pull: *pull_git

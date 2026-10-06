@@ -1,0 +1,51 @@
+# Pull requests: lint, test, validate prefect.yaml, and build the image.
+# Nothing here talks to Prefect Cloud and nothing is pushed anywhere.
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: Lint, test, validate prefect.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install (no torch)
+        run: uv sync --frozen
+
+      - name: Ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Pytest
+        run: uv run pytest -q
+
+      - name: Validate prefect.yaml
+        run: uv run python scripts/check_prefect_yaml.py
+
+  build-image:
+    name: Build image (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: prefect-modal-starter:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

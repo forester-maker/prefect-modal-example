@@ -1,0 +1,55 @@
+# Push to main: deploy the canary and run it once.
+#
+# This is the "is this thing on" check. It fails if CI cannot authenticate to
+# Prefect Cloud, if `prefect deploy` breaks, or if the work pool cannot complete
+# a run. Real flows deploy on tags (deploy-release.yml); this keeps the path warm
+# in between.
+#
+# Knobs:
+#   vars.CANARY_DEPLOYMENT  which deployment to run. Default canary/process
+#                           (needs a worker on the starter-process pool).
+#                           Set to canary/modal to need no worker at all.
+#   vars.CANARY_TIMEOUT_MIN how long to wait for the run. Default 10.
+name: Deploy canary
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      PREFECT_API_URL: ${{ secrets.PREFECT_API_URL }}
+      PREFECT_API_KEY: ${{ secrets.PREFECT_API_KEY }}
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      REPO_BRANCH: ${{ github.ref_name }}
+      CANARY_DEPLOYMENT: ${{ vars.CANARY_DEPLOYMENT || 'canary/process' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen --no-dev
+
+      - name: Deploy canary
+        run: |
+          uv run prefect deploy --name canary/process --name canary/modal
+
+      - name: Run canary and wait
+        timeout-minutes: ${{ fromJSON(vars.CANARY_TIMEOUT_MIN || '10') }}
+        run: |
+          uv run prefect deployment run "$CANARY_DEPLOYMENT" \
+            --param greeting="ci ${GITHUB_SHA::7}" \
+            --tag ci \
+            --watch
