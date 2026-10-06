@@ -71,10 +71,11 @@ image, env, and so on).
 ```bash
 export REPO_URL=https://github.com/<you>/prefect-modal-starter
 export REPO_BRANCH=main
-uv run prefect deploy --all
+uv run prefect --no-prompt deploy --all
 ```
 
-`IMAGE` is unset, so the `modal-image` deployment is created with an empty image
+`--no-prompt` skips the interactive questions `prefect deploy` otherwise asks; CI
+uses it too. `IMAGE` is unset, so the `modal-image` deployment is created with an empty image
 and will fail if run. That is expected until CI builds one (see Releases).
 
 **4. Run the canary on the process pool.** In one terminal:
@@ -91,7 +92,8 @@ uv run prefect deployment run canary/process --watch
 
 **5. Run the GPU smoke test on Modal.** No worker needed. The first run clones
 the repo into a Modal container and installs torch with uv, so it takes a few
-minutes; later runs reuse Modal's cache.
+minutes (the deployment's `timeout` is set to 30 min to allow for it); later runs
+reuse Modal's cache.
 
 ```bash
 uv run prefect deployment run gpu-smoke-test/modal-git --watch
@@ -124,12 +126,30 @@ Read it top to bottom; it is commented. Things worth noticing:
 
 ### Modal job variables
 
-Set per deployment under `work_pool.job_variables`. The ones this repo uses:
-`gpu` (for example `T4`, `A10G`, `A100`), `image`, `env`. The pool's base job
-template is the source of truth for the full list and defaults:
+Set per deployment under `work_pool.job_variables`. From the Modal push pool's
+base job template:
+
+| Variable           | Type    | Notes                                                        |
+|--------------------|---------|--------------------------------------------------------------|
+| `gpu`              | string  | `T4`, `A10G`, `A100`, `H100`, ... Modal's GPU names          |
+| `cpu`              | number  | vCPUs                                                        |
+| `memory`           | integer | MiB                                                          |
+| `image`            | string  | container image; default is a stock Prefect image            |
+| `env`              | object  | environment variables                                        |
+| `timeout`          | integer | seconds. **Default 300.** Set it for anything longer.        |
+| `pip_packages`     | array   | extra packages installed at start (prefer the image)         |
+| `secrets`          | array   | Modal secret names                                           |
+| `command`          | string  | override the container command                               |
+| `proxy`            | string  | Modal proxy name                                             |
+| `environment_name` | string  | Modal environment                                            |
+| `modal_credentials`| block   | set once on the pool by `--provision-infra`                  |
+
+The 300-second default `timeout` is the one that bites: a 4-hour training run
+on the default dies at 5 minutes. Every Modal deployment in this repo sets it
+explicitly. Print the live template any time with:
 
 ```bash
-uv run prefect work-pool inspect starter-modal
+uv run prefect work-pool get-default-base-job-template --type modal:push
 ```
 
 ### Two ways to get code onto Modal

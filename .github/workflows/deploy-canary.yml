@@ -44,7 +44,7 @@ jobs:
 
       - name: Deploy canary
         run: |
-          uv run prefect deploy --name canary/process --name canary/modal
+          uv run prefect --no-prompt deploy --name canary/process --name canary/modal
 
       - name: Run canary and wait
         timeout-minutes: ${{ fromJSON(vars.CANARY_TIMEOUT_MIN || '10') }}

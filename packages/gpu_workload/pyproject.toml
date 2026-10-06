@@ -12,6 +12,7 @@ dependencies = [
 # torch is heavy; only the GPU image / Modal run needs it. Tests and the canary do not.
 gpu = [
     "torch>=2.4",
+    "numpy>=1.26",
 ]
 
 [build-system]

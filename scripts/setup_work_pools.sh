@@ -20,14 +20,14 @@ uv run prefect work-pool create "$MODAL_POOL" --type modal:push --provision-infr
 
 echo
 echo "==> Modal job variables you can set per deployment (job_variables in prefect.yaml):"
-uv run prefect work-pool inspect "$MODAL_POOL" 2>/dev/null \
-  | python3 -c '
-import sys, re
-txt = sys.stdin.read()
-m = re.search(r"properties.*", txt, re.S)
-keys = sorted(set(re.findall(r"\x27([a-z_]+)\x27: \{", txt)))
-print("   " + ", ".join(k for k in keys if k not in ("properties","variables","job_configuration")))
-' || echo "   (run: uv run prefect work-pool inspect $MODAL_POOL)"
+uv run prefect work-pool get-default-base-job-template --type modal:push \
+  | uv run python -c '
+import json, sys
+props = json.load(sys.stdin)["variables"]["properties"]
+for k, v in props.items():
+    print(f"   {k:18s} {v.get(\"type\", \"\"):8s} default={json.dumps(v.get(\"default\"))}")
+'
+echo "   NOTE: timeout defaults to 300s. Set job_variables.timeout per deployment for anything longer."
 
 echo
 echo "Start a worker for the process pool from this repo:"

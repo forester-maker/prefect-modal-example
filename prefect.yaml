@@ -71,6 +71,7 @@ deployments:
     work_pool:
       <<: *pool_modal
       job_variables:
+        timeout: 1200  # seconds; Modal pool default is 300, too short for a uv sync of torch
         env:
           UV_PROJECT_ENVIRONMENT: /usr/local
     pull: *pull_git_install
@@ -89,6 +90,7 @@ deployments:
       <<: *pool_modal
       job_variables:
         gpu: T4
+        timeout: 1800  # seconds. Modal pool default is 300. Real 4-8h jobs need ~30000.
         env:
           UV_PROJECT_ENVIRONMENT: /usr/local
     pull: *pull_git_install
@@ -107,6 +109,7 @@ deployments:
       job_variables:
         image: "{{ $IMAGE }}"
         gpu: T4
+        timeout: 1800  # seconds; raise for long jobs
     pull: *pull_image
 
   # Laptop / process-pool variant. CPU only, small matrix. Proves the flow and

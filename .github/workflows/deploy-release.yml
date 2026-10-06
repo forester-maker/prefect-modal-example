@@ -83,4 +83,4 @@ jobs:
       - run: uv sync --frozen --no-dev
 
       - name: Deploy all
-        run: uv run prefect deploy --all
+        run: uv run prefect --no-prompt deploy --all
